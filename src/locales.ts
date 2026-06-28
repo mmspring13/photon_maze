@@ -33,6 +33,7 @@ export const LOCALES = {
         themeGreen: "Green",
         themeRed: "Red",
         themeBlue: "Blue",
+        swipeHint: "Swipe anywhere to glide or use controls",
     },
     ru: {
         gameName: "ФОТОННЫЙ ЛАБИРИНТ",
@@ -68,6 +69,7 @@ export const LOCALES = {
         themeGreen: "Зеленая",
         themeRed: "Красная",
         themeBlue: "Синяя",
+        swipeHint: "Проведите по экрану для движения или используйте кнопки",
     }
 };
 

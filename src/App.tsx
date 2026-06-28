@@ -1,40 +1,20 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { RotateCcw, ChevronLeft, ChevronRight, RefreshCw, Layers, Star, Lock, Play, List, Info, ArrowLeft, Globe, Palette } from 'lucide-react';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { RotateCcw, Star, Lock, Play, List, Info, ArrowLeft, Globe, Palette } from 'lucide-react';
 import { LEVELS } from './levels';
-import type {  Level, Position } from './levels';
-import { LOCALES, type Lang, getMovesInfoWord, getImproveScoresText } from './locales';
-
-const WALL_COLOR = 'bg-zinc-800 border-zinc-700 shadow-[inset_0_-4px_0_rgba(0,0,0,0.6)]';
-const PLAYER_COLOR = 'bg-accent-400 shadow-[0_0_25px_rgba(var(--accent-rgb),0.8)]';
-const TARGET_COLOR = 'bg-rose-500 shadow-[0_0_25px_rgba(244,63,113,0.6)] border-rose-300';
-
-const SOUNDS = {
-  bgMenu: ['/assets/sounds/background-menu-1.mp3', '/assets/sounds/background-menu-2.mp3'],
-  bgGame: ['/assets/sounds/background-game-1.mp3', '/assets/sounds/background-game-2.mp3', '/assets/sounds/background-game-3.mp3', '/assets/sounds/background-game-4.mp3'],
-  menuSelect: '/assets/sounds/select-menu-item.mp3',
-  startGame: '/assets/sounds/start-game.mp3',
-  movePlayer: '/assets/sounds/move-player.mp3',
-  winLevel: '/assets/sounds/win-level.mp3',
-  winBestScore: '/assets/sounds/win-best-score.mp3',
-  restartGame: '/assets/sounds/restart-game.mp3',
-  nextLevel: '/assets/sounds/next-level.mp3',
-};
-
-const playSound = (src: string) => {
-  try {
-    const audio = new Audio(src);
-    audio.play().catch(() => {});
-  } catch (e) {}
-};
-
-type GameView = 'menu' | 'playing' | 'select' | 'about';
-
-export type ThemeParams = 'green' | 'fuchsia' | 'red' | 'blue';
+import type { Level } from './levels';
+import { LOCALES } from './locales';
+import type { Lang } from './locales';
+import GameSession from './components/GameSession';
+import { SOUNDS, playSound } from './types';
+import type { GameView, ThemeParams } from './types';
 
 export default function App() {
   const [view, setView] = useState<GameView>('menu');
-  const [isStarted, setIsStarted] = useState(false);
   const [currentLevelIdx, setCurrentLevelIdx] = useState(0);
   const [bestScores, setBestScores] = useState<Record<number, number>>(() => {
     try {
@@ -80,6 +60,7 @@ export default function App() {
 
   const bgManagerRef = useRef<{
     activeAudio: HTMLAudioElement | null;
+    // @ts-expect-error NodeJS error
     interval: NodeJS.Timeout | null;
     currentType: 'menu' | 'game' | null;
   }>({
@@ -154,11 +135,7 @@ export default function App() {
     if (manager.currentType !== requiredType) {
       playTrack(requiredType);
     }
-    if (!isStarted) {
-      playTrack('menu');
-      setIsStarted(true);
-    }
-  }, [view, isStarted]);
+  }, [view]);
 
   // Clean up on App unmount
   useEffect(() => {
@@ -193,18 +170,6 @@ export default function App() {
 
   const level = LEVELS[currentLevelIdx];
 
-  const [playerPos, setPlayerPos] = useState<Position>({x: 0, y: 0});
-  type HistoryItem = { pos: Position; passedCells: Position[] };
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [visits, setVisits] = useState<Record<string, number>>({});
-  const isMovingRef = useRef(false);
-  const [levelComplete, setLevelComplete] = useState(false);
-  const [isMoving, setIsMoving] = useState(false);
-
-  const [shake, setShake] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [touchStart, setTouchStart] = useState<{x: number; y: number} | null>(null);
-
   // Level unlocking logic
   const UNLOCK_CHUNK_SIZE = 4;
   const SCORE_LEEWAY_PER_LEVEL = 10;
@@ -228,292 +193,81 @@ export default function App() {
     return actualMoves <= maxAllowed;
   }, [bestScores]);
 
-  useEffect(() => {
-    if (level) {
-      setPlayerPos(level.start);
-      setHistory([]);
-      setVisits({ [`${level.start.x},${level.start.y}`]: 1 });
-      setLevelComplete(false);
-      isMovingRef.current = false;
-    }
-  }, [currentLevelIdx, level, view]);
-
-  const triggerShake = () => {
-    setShake(true);
-    setTimeout(() => setShake(false), 200);
-  };
-
-  const isWall = useCallback((x: number, y: number) => {
-    if (x < 0 || x >= level.gridSize.width || y < 0 || y >= level.gridSize.height) return true;
-    return level.walls.some(w => w.x === x && w.y === y);
-  }, [level]);
-
-  const move = useCallback((dx: number, dy: number) => {
-    if (isMovingRef.current || levelComplete || view !== 'playing') return;
-
-    let curX = playerPos.x;
-    let curY = playerPos.y;
-
-    let traveled = false;
-    let bumped = false;
-    const passedCells: Position[] = [];
-
-    while (true) {
-      const nx = curX + dx;
-      const ny = curY + dy;
-      if (isWall(nx, ny)) {
-        bumped = true;
-        break;
-      }
-
-      curX = nx;
-      curY = ny;
-      traveled = true;
-      passedCells.push({x: curX, y: curY});
-    }
-
-    if (!traveled && bumped) {
-      triggerShake();
-    }
-
-    if (traveled) {
-      setHistory(prev => [...prev, {pos: playerPos, passedCells}]);
-      setPlayerPos({ x: curX, y: curY });
-      setVisits(prev => {
-        const next = {...prev};
-        passedCells.forEach(c => {
-          const key = `${c.x},${c.y}`;
-          next[key] = (next[key] || 0) + 1;
-        });
-        return next;
-      });
-      isMovingRef.current = true;
-      setIsMoving(true);
-      playSound(SOUNDS.movePlayer);
-
-      const distance = Math.max(Math.abs(curX - playerPos.x), Math.abs(curY - playerPos.y));
-      const duration = Math.min(150 + distance * 30, 400);
-
-      setTimeout(() => {
-        isMovingRef.current = false;
-        setIsMoving(false);
-        if (bumped) triggerShake();
-
-        if (curX === level.target.x && curY === level.target.y) {
-          setLevelComplete(true);
-          const currentMoves = history.length + 1;
-          setBestScores(prev => {
-            const oldBest = prev[level.id];
-            const isNewBest = !oldBest || currentMoves < oldBest;
-            if (isNewBest) playSound(SOUNDS.winBestScore);
-            else playSound(SOUNDS.winLevel);
-
-            return {
-              ...prev,
-              [level.id]: oldBest ? Math.min(oldBest, currentMoves) : currentMoves
-            };
-          });
-        }
-      }, duration);
-    }
-  }, [playerPos, isWall, history.length, levelComplete, level, view]);
-
-  const undo = () => {
-    if (isMovingRef.current || levelComplete || history.length === 0) return;
-    const newHistory = [...history];
-    const prev = newHistory.pop()!;
-    setHistory(newHistory);
-    setPlayerPos(prev.pos);
-    setVisits(prevVisits => {
-      const next = {...prevVisits};
-      prev.passedCells.forEach(c => {
-        const key = `${c.x},${c.y}`;
-        if (next[key]) {
-          next[key]--;
-        }
-      });
-      return next;
-    });
-  };
-
-  const restart = () => {
-    if (isMovingRef.current) return;
-    playSound(SOUNDS.restartGame);
-    setPlayerPos(level.start);
-    setHistory([]);
-    setVisits({ [`${level.start.x},${level.start.y}`]: 1 });
-    setLevelComplete(false);
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (view !== 'playing') return;
-      switch (e.key) {
-        case 'ArrowUp':
-        case 'w':
-        case 'W':
-          move(0, -1); break;
-        case 'ArrowDown':
-        case 's':
-        case 'S':
-          move(0, 1); break;
-        case 'ArrowLeft':
-        case 'a':
-        case 'A':
-          move(-1, 0); break;
-        case 'ArrowRight':
-        case 'd':
-        case 'D':
-          move(1, 0); break;
-        case 'z':
-        case 'Z':
-        case 'Backspace':
-          if (e.ctrlKey || e.metaKey || e.key === 'z') undo();
-          break;
-        case 'r':
-        case 'R':
-          restart(); break;
-        case 'Escape':
-          setView('menu'); break;
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [move, undo, restart, view]);
-
-  // Touch handling
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (view !== 'playing') return;
-    setTouchStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (view !== 'playing' || !touchStart) return;
-    const dx = e.changedTouches[0].clientX - touchStart.x;
-    const dy = e.changedTouches[0].clientY - touchStart.y;
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (Math.abs(dx) > 30) move(dx > 0 ? 1 : -1, 0);
-    } else {
-      if (Math.abs(dy) > 30) move(0, dy > 0 ? 1 : -1);
-    }
-    setTouchStart(null);
-  };
-
-  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : true;
-  const gridGap = isMobile ? 6 : 8;
-
-  let cellSize = 40;
-  if (level) {
-    const padding = isMobile ? 24 : 32;
-    const availableWidth = (typeof window !== 'undefined' ? window.innerWidth : 300) - 32 - padding;
-    const availableHeight = typeof window !== 'undefined' ? window.innerHeight - 300 : 300;
-
-    cellSize = Math.min(
-        60,
-        Math.floor((availableWidth - gridGap * (level.gridSize.width - 1)) / level.gridSize.width),
-        Math.floor((availableHeight - gridGap * (level.gridSize.height - 1)) / level.gridSize.height)
-    );
-  }
-
-  const renderStars = (moves: number, minMoves: number) => {
-    const stars = moves <= minMoves ? 3 : moves <= minMoves + 2 ? 2 : 1;
-    return (
-        <div className="flex gap-1 justify-center mt-3">
-          {[1, 2, 3].map(i => (
-              <Star key={i} className={`w-6 h-6 ${i <= stars ? 'fill-amber-400 text-amber-400' : 'text-zinc-700'}`} />
-          ))}
-        </div>
-    );
-  };
-
-  // derived state for checks
-  const nextLevelIdx = currentLevelIdx + 1;
-  const isNextUnlocked = isLevelUnlocked(nextLevelIdx);
-  const neededChunkIdx = Math.floor(nextLevelIdx / UNLOCK_CHUNK_SIZE);
-  const neededChunkStart = (neededChunkIdx - 1) * UNLOCK_CHUNK_SIZE;
-  const neededChunkEnd = neededChunkIdx * UNLOCK_CHUNK_SIZE;
-  const neededChunkMaxMoves = useMemo(() => {
-    let total = 0;
-    for(let i=neededChunkStart; i<neededChunkEnd; i++) if(LEVELS[i]) total += LEVELS[i].minMoves;
-    return total + (neededChunkEnd - neededChunkStart) * SCORE_LEEWAY_PER_LEVEL;
-  }, [neededChunkStart, neededChunkEnd]);
-
 
   const renderMenu = () => (
-      <div className="flex flex-col items-center justify-center min-h-screen p-6 z-10 relative">
-        <div className="mb-16 relative">
-          <div className="absolute inset-0 bg-accent-500/20 blur-[100px] rounded-full" />
-          <h1 className="text-4xl md:text-6xl lg:text-8xl font-black tracking-[0.3em] text-white drop-shadow-[0_0_25px_rgba(255,255,255,0.4)] relative z-10 text-center">{t.gameName}</h1>
-          <div className="h-1 w-full bg-gradient-to-r from-transparent via-accent-500 to-transparent mt-4 opacity-50 absolute left-0" />
-        </div>
-
-        <div className="flex flex-col gap-4 w-full max-w-sm relative z-10">
-          {currentLevelIdx > 0 && (
-              <button
-                  onClick={() => {
-                    playSound(SOUNDS.startGame);
-                    setView('playing');
-                  }}
-                  className="group relative overflow-hidden flex items-center justify-center gap-3 w-full py-5 px-6 bg-accent-500 text-zinc-950 font-black rounded-2xl tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(var(--accent-rgb),0.3)] hover:shadow-[0_0_40px_rgba(var(--accent-rgb),0.5)]"
-              >
-                <div className="absolute inset-0 bg-white/20 translate-y-[-100%] group-hover:translate-y-[100%] transition-transform duration-500" />
-                <Play className="w-6 h-6 fill-zinc-950" /> {t.continue}
-              </button>
-          )}
-
-          <button
-              onClick={() => { playSound(SOUNDS.menuSelect); setView('select'); }}
-              className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <List className="w-5 h-5" /> {t.chooseLevel}
-          </button>
-
-          <button
-              onClick={() => {
-                playSound(SOUNDS.startGame);
-                setCurrentLevelIdx(0);
-                setBestScores({});
-                setView('playing');
-              }}
-              className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <RotateCcw className="w-5 h-5" /> {t.newGame}
-          </button>
-
-          <button
-              onClick={() => { playSound(SOUNDS.menuSelect); setView('about'); }}
-              className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Info className="w-5 h-5" /> {t.about}
-          </button>
-
-          <button
-              onClick={() => {
-                playSound(SOUNDS.menuSelect);
-                setLang(l => l === 'en' ? 'ru' : 'en');
-              }}
-              className="flex items-center justify-center gap-3 w-full py-4 px-6 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98] mt-2"
-          >
-            <Globe className="w-5 h-5" /> {lang === 'en' ? "RU / EN Language" : "EN / RU Язык"}
-          </button>
-
-          <button
-              onClick={() => {
-                playSound(SOUNDS.menuSelect);
-                const themes: ThemeParams[] = ['green', 'fuchsia', 'red', 'blue'];
-                setTheme(l => themes[(themes.indexOf(l) + 1) % themes.length]);
-              }}
-              className="flex items-center justify-center gap-3 w-full py-4 px-6 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98] mt-2"
-          >
-            <Palette className="w-5 h-5" /> {t.theme}: {
-            theme === 'green' ? t.themeGreen :
-                theme === 'fuchsia' ? t.themeFuchsia :
-                    theme === 'red' ? t.themeRed : t.themeBlue
-          }
-          </button>
-        </div>
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 z-10 relative">
+      <div className="mb-16 relative">
+        <div className="absolute inset-0 bg-accent-500/20 blur-[100px] rounded-full" />
+        <h1 className="text-4xl md:text-6xl lg:text-8xl font-black tracking-[0.3em] text-white drop-shadow-[0_0_25px_rgba(255,255,255,0.4)] relative z-10 text-center">{t.gameName}</h1>
+        <div className="h-1 w-full bg-gradient-to-r from-transparent via-accent-500 to-transparent mt-4 opacity-50 absolute left-0" />
       </div>
+
+      <div className="flex flex-col gap-4 w-full max-w-sm relative z-10">
+        {currentLevelIdx > 0 && (
+          <button
+            onClick={() => {
+              playSound(SOUNDS.startGame);
+              setView('playing');
+            }}
+            className="group relative overflow-hidden flex items-center justify-center gap-3 w-full py-5 px-6 bg-accent-500 text-zinc-950 font-black rounded-2xl tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(var(--accent-rgb),0.3)] hover:shadow-[0_0_40px_rgba(var(--accent-rgb),0.5)]"
+          >
+            <div className="absolute inset-0 bg-white/20 translate-y-[-100%] group-hover:translate-y-[100%] transition-transform duration-500" />
+            <Play className="w-6 h-6 fill-zinc-950" /> {t.continue}
+          </button>
+        )}
+
+        <button
+          onClick={() => { playSound(SOUNDS.menuSelect); setView('select'); }}
+          className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <List className="w-5 h-5" /> {t.chooseLevel}
+        </button>
+
+        <button
+          onClick={() => {
+            playSound(SOUNDS.startGame);
+            setCurrentLevelIdx(0);
+            setBestScores({});
+            setView('playing');
+          }}
+          className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <RotateCcw className="w-5 h-5" /> {t.newGame}
+        </button>
+
+        <button
+          onClick={() => { playSound(SOUNDS.menuSelect); setView('about'); }}
+          className="flex items-center justify-center gap-3 w-full py-5 px-6 bg-zinc-900 hover:bg-zinc-800 text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <Info className="w-5 h-5" /> {t.about}
+        </button>
+
+        <button
+          onClick={() => {
+            playSound(SOUNDS.menuSelect);
+            setLang(l => l === 'en' ? 'ru' : 'en');
+          }}
+          className="flex items-center justify-center gap-3 w-full py-4 px-6 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98] mt-2"
+        >
+          <Globe className="w-5 h-5" /> {lang === 'en' ? "RU / EN Language" : "EN / RU Язык"}
+        </button>
+
+        <button
+          onClick={() => {
+            playSound(SOUNDS.menuSelect);
+            const themes: ThemeParams[] = ['green', 'fuchsia', 'red', 'blue'];
+            setTheme(l => themes[(themes.indexOf(l) + 1) % themes.length]);
+          }}
+          className="flex items-center justify-center gap-3 w-full py-4 px-6 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold rounded-2xl tracking-[0.1em] border border-zinc-800 hover:border-zinc-700 transition-all hover:scale-[1.02] active:scale-[0.98] mt-2"
+        >
+          <Palette className="w-5 h-5" /> {t.theme}: {
+          theme === 'green' ? t.themeGreen :
+            theme === 'fuchsia' ? t.themeFuchsia :
+              theme === 'red' ? t.themeRed : t.themeBlue
+        }
+        </button>
+      </div>
+    </div>
   );
 
   const chunkColors = [
@@ -531,342 +285,151 @@ export default function App() {
     }
 
     return (
-        <div className="flex flex-col items-center h-full p-6 w-full max-w-4xl mx-auto z-10 relative overflow-y-auto">
-          <div className="w-full flex justify-between items-center mb-8 mt-4 sticky top-0 z-20">
-            <button
-                onClick={() => { playSound(SOUNDS.menuSelect); setView('menu'); }}
-                className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-zinc-800 text-white transition-all transform hover:scale-105 active:scale-95 shadow-lg"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h2 className="text-xl sm:text-2xl font-black tracking-widest uppercase text-white shadow-black drop-shadow-lg">{t.selectLevel}</h2>
-            <div className="w-12" />
-          </div>
+      <div className="flex flex-col items-center h-full p-6 w-full max-w-4xl mx-auto z-10 relative overflow-y-auto">
+        <div className="w-full flex justify-between items-center mb-8 mt-4 sticky top-0 z-20">
+          <button
+            onClick={() => { playSound(SOUNDS.menuSelect); setView('menu'); }}
+            className="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-zinc-800 text-white transition-all transform hover:scale-105 active:scale-95 shadow-lg"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-xl sm:text-2xl font-black tracking-widest uppercase text-white shadow-black drop-shadow-lg">{t.selectLevel}</h2>
+          <div className="w-12" />
+        </div>
 
-          <div className="flex flex-col gap-10 w-full mb-12">
-            {chunks.map((chunk, chunkIdx) => {
-              const firstLevelIdx = chunkIdx * UNLOCK_CHUNK_SIZE;
-              const isUnlocked = isLevelUnlocked(firstLevelIdx);
-              const colorTheme = chunkColors[chunkIdx % chunkColors.length];
+        <div className="flex flex-col gap-10 w-full mb-12">
+          {chunks.map((chunk, chunkIdx) => {
+            const firstLevelIdx = chunkIdx * UNLOCK_CHUNK_SIZE;
+            const isUnlocked = isLevelUnlocked(firstLevelIdx);
+            const colorTheme = chunkColors[chunkIdx % chunkColors.length];
 
-              let unlockMessage = '';
-              if (!isUnlocked && chunkIdx > 0) {
-                const prevChunkStart = (chunkIdx - 1) * UNLOCK_CHUNK_SIZE;
-                const prevChunkEnd = chunkIdx * UNLOCK_CHUNK_SIZE;
+            let unlockMessage = '';
+            if (!isUnlocked && chunkIdx > 0) {
+              const prevChunkStart = (chunkIdx - 1) * UNLOCK_CHUNK_SIZE;
+              const prevChunkEnd = chunkIdx * UNLOCK_CHUNK_SIZE;
 
-                let totalMinMoves = 0;
-                let actualMoves = 0;
-                let allPlayed = true;
-                for (let i = prevChunkStart; i < prevChunkEnd; i++) {
-                  if (LEVELS[i]) {
-                    totalMinMoves += LEVELS[i].minMoves;
-                    const best = bestScores[LEVELS[i].id];
-                    if (!best) allPlayed = false;
-                    actualMoves += (best || 0);
-                  }
-                }
-                const maxAllowed = totalMinMoves + (prevChunkEnd - prevChunkStart) * SCORE_LEEWAY_PER_LEVEL;
-
-                if (!allPlayed) {
-                  unlockMessage = `${t.completePart} ${chunkIdx}`;
-                } else {
-                  unlockMessage = `${t.partTotal} ${chunkIdx} ${t.movesStr} ${actualMoves} / ${t.max} ${maxAllowed}`;
+              let totalMinMoves = 0;
+              let actualMoves = 0;
+              let allPlayed = true;
+              for (let i = prevChunkStart; i < prevChunkEnd; i++) {
+                if (LEVELS[i]) {
+                  totalMinMoves += LEVELS[i].minMoves;
+                  const best = bestScores[LEVELS[i].id];
+                  if (!best) allPlayed = false;
+                  actualMoves += (best || 0);
                 }
               }
+              const maxAllowed = totalMinMoves + (prevChunkEnd - prevChunkStart) * SCORE_LEEWAY_PER_LEVEL;
 
-              return (
-                  <div key={chunkIdx} className="relative group/chunk pt-2">
-                    <div className="text-sm font-bold uppercase tracking-widest text-zinc-500 mb-4 px-2">{t.part} {chunkIdx + 1}</div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full relative z-0">
-                      {chunk.map((lvl, localIdx) => {
-                        const globalIdx = firstLevelIdx + localIdx;
-                        const score = bestScores[lvl.id];
+              if (!allPlayed) {
+                unlockMessage = `${t.completePart} ${chunkIdx}`;
+              } else {
+                unlockMessage = `${t.partTotal} ${chunkIdx} ${t.movesStr} ${actualMoves} / ${t.max} ${maxAllowed}`;
+              }
+            }
 
-                        return (
-                            <button
-                                key={lvl.id}
-                                disabled={!isUnlocked}
-                                onClick={() => {
-                                  playSound(SOUNDS.startGame);
-                                  setCurrentLevelIdx(globalIdx);
-                                  setView('playing');
-                                }}
-                                className={`aspect-square relative rounded-3xl flex flex-col items-center justify-center border transition-all ${
-                                    isUnlocked
-                                        ? `border-zinc-800 bg-zinc-900 hover:bg-zinc-800 ${colorTheme.border} cursor-pointer ${colorTheme.shadow}`
-                                        : 'border-zinc-900 bg-zinc-900/50 opacity-50'
-                                }`}
-                            >
-                              <div className={`text-3xl font-black font-mono mb-3 ${isUnlocked ? 'text-zinc-100' : 'text-zinc-600'}`}>{lvl.id}</div>
-                              {isUnlocked && (
-                                  score ? (
-                                      <div className="flex gap-1.5">
-                                        {[1, 2, 3].map(i => {
-                                          const stars = score <= lvl.minMoves ? 3 : score <= lvl.minMoves + 2 ? 2 : 1;
-                                          return <Star key={i} className={`w-4 h-4 ${i <= stars ? 'fill-amber-400 text-amber-400' : 'text-zinc-800'}`} />
-                                        })}
-                                      </div>
-                                  ) : (
-                                      <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{t.unplayed}</div>
-                                  )
-                              )}
-                            </button>
-                        );
-                      })}
+            return (
+              <div key={chunkIdx} className="relative group/chunk pt-2">
+                <div className="text-sm font-bold uppercase tracking-widest text-zinc-500 mb-4 px-2">{t.part} {chunkIdx + 1}</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full relative z-0">
+                  {chunk.map((lvl, localIdx) => {
+                    const globalIdx = firstLevelIdx + localIdx;
+                    const score = bestScores[lvl.id];
+
+                    return (
+                      <button
+                        key={lvl.id}
+                        disabled={!isUnlocked}
+                        onClick={() => {
+                          playSound(SOUNDS.startGame);
+                          setCurrentLevelIdx(globalIdx);
+                          setView('playing');
+                        }}
+                        className={`aspect-square relative rounded-3xl flex flex-col items-center justify-center border transition-all ${
+                          isUnlocked
+                            ? `border-zinc-800 bg-zinc-900 hover:bg-zinc-800 ${colorTheme.border} cursor-pointer ${colorTheme.shadow}`
+                            : 'border-zinc-900 bg-zinc-900/50 opacity-50'
+                        }`}
+                      >
+                        <div className={`text-3xl font-black font-mono mb-3 ${isUnlocked ? 'text-zinc-100' : 'text-zinc-600'}`}>{lvl.id}</div>
+                        {isUnlocked && (
+                          score ? (
+                            <div className="flex gap-1.5">
+                              {[1, 2, 3].map(i => {
+                                const stars = score <= lvl.minMoves ? 3 : score <= lvl.minMoves + 2 ? 2 : 1;
+                                return <Star key={i} className={`w-4 h-4 ${i <= stars ? 'fill-amber-400 text-amber-400' : 'text-zinc-800'}`} />
+                              })}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{t.unplayed}</div>
+                          )
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {!isUnlocked && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center top-8 pt-2">
+                    <div className="absolute inset-0 backdrop-blur-[6px] bg-zinc-950/30 rounded-3xl" />
+                    <div className={`relative flex flex-col items-center justify-center py-6 px-8 rounded-3xl ${colorTheme.lockBg} border border-zinc-800/80 shadow-2xl backdrop-blur-xl`}>
+                      <Lock className={`w-10 h-10 mb-4 ${colorTheme.lockText}`} />
+                      <div className="text-white font-bold tracking-widest uppercase text-sm md:text-base whitespace-nowrap">{unlockMessage}</div>
                     </div>
-
-                    {!isUnlocked && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-center top-8 pt-2">
-                          <div className="absolute inset-0 backdrop-blur-[6px] bg-zinc-950/30 rounded-3xl" />
-                          <div className={`relative flex flex-col items-center justify-center py-6 px-8 rounded-3xl ${colorTheme.lockBg} border border-zinc-800/80 shadow-2xl backdrop-blur-xl`}>
-                            <Lock className={`w-10 h-10 mb-4 ${colorTheme.lockText}`} />
-                            <div className="text-white font-bold tracking-widest uppercase text-sm md:text-base whitespace-nowrap">{unlockMessage}</div>
-                          </div>
-                        </div>
-                    )}
                   </div>
-              );
-            })}
-          </div>
+                )}
+              </div>
+            );
+          })}
         </div>
+      </div>
     );
   };
 
   const renderAbout = () => (
-      <div className="flex flex-col items-center min-h-screen p-6 w-full max-w-2xl mx-auto z-10 text-center relative justify-center">
-        <div className="w-full flex justify-between items-center mb-8 mt-4">
-          <button
-              onClick={() => setView('menu')}
-              className="p-3 bg-zinc-800 rounded-full hover:bg-zinc-700 text-white"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="w-11" />
-        </div>
-
-        <h2 className="text-3xl md:text-4xl font-bold tracking-[0.2em] mb-8">{t.gameName}</h2>
-        <p className="text-zinc-400 mb-6 leading-relaxed max-w-lg mx-auto">
-          {t.description}
-        </p>
-      </div>
-  );
-
-  const renderPlaying = () => (
-      <div className="w-full flex flex-col items-center justify-center flex-1 h-full relative z-10">
-        {/* Header */}
-        <div className="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-center z-10 max-w-5xl mx-auto right-0">
-          <button onClick={() => setView('menu')} className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800">
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <div className="flex gap-4">
-            <button
-                onClick={undo}
-                disabled={history.length === 0 || isMovingRef.current || levelComplete}
-                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30"
-            >
-              <RotateCcw className="w-5 h-5" />
-            </button>
-            <button
-                onClick={restart}
-                disabled={history.length === 0 && !levelComplete}
-                className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:opacity-30"
-            >
-              <RefreshCw className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-6 mt-12 flex flex-col items-center gap-2 text-center">
-          <div className="font-mono text-sm tracking-widest text-zinc-400 uppercase">
-            {t.sector} <span className="text-white font-bold ml-1">{currentLevelIdx + 1}</span>
-          </div>
-
-          <div className="flex gap-6 items-center bg-zinc-950 border border-zinc-800/80 px-8 py-3 rounded-2xl shadow-inner">
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.movesCap}</span>
-              <span className="font-mono text-2xl text-accent-400 font-black">{history.length}</span>
-            </div>
-            <div className="w-px h-10 bg-zinc-800" />
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.targetMode}</span>
-              <span className="font-mono text-2xl text-zinc-300 font-bold">{level.minMoves}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Game Board */}
-        <motion.div
-            animate={{
-              x: shake ? [-3, 3, -2, 2, 0] : 0,
-              y: shake ? [-1, 1, -1, 1, 0] : 0,
-              boxShadow: isMoving
-                  ? '0 20px 60px -15px rgba(var(--accent-rgb), 0.2)'
-                  : '0 20px 40px -15px rgba(0, 0, 0, 0.5)'
-            }}
-            transition={{ duration: 0.2 }}
-            ref={containerRef}
-            className="relative bg-zinc-950 p-3 md:p-4 rounded-3xl ring-1 ring-zinc-800 touch-none select-none max-w-full overflow-hidden shadow-2xl"
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
+    <div className="flex flex-col items-center min-h-screen p-6 w-full max-w-2xl mx-auto z-10 text-center relative justify-center">
+      <div className="w-full flex justify-between items-center mb-8 mt-4">
+        <button
+          onClick={() => setView('menu')}
+          className="p-3 bg-zinc-800 rounded-full hover:bg-zinc-700 text-white"
         >
-          <div
-              className="relative grid gap-1.5 md:gap-2"
-              style={{
-                gridTemplateColumns: `repeat(${level.gridSize.width}, ${cellSize}px)`,
-                gridTemplateRows: `repeat(${level.gridSize.height}, ${cellSize}px)`,
-              }}
-          >
-            {Array.from({ length: level.gridSize.width * level.gridSize.height }).map((_, i) => {
-              const x = i % level.gridSize.width;
-              const y = Math.floor(i / level.gridSize.width);
-
-              let isWallCell = level.walls.some(w => w.x === x && w.y === y);
-              const isTarget = level.target.x === x && level.target.y === y;
-              const visitCount = visits[`${x},${y}`] || 0;
-
-              let emptyClass = 'bg-zinc-950 border-zinc-900';
-              if (visitCount === 1) emptyClass = 'bg-zinc-900 border-zinc-800';
-              else if (visitCount === 2) emptyClass = 'bg-accent-950/20 border-accent-900/30';
-              else if (visitCount >= 3) emptyClass = 'bg-accent-900/30 border-accent-800/40';
-
-              return (
-                  <div
-                      key={i}
-                      className={`flex items-center justify-center relative rounded-xl border-2 transition-colors duration-500 ${
-                          isWallCell ? WALL_COLOR :
-                              emptyClass
-                      }`}
-                  >
-                    {visitCount > 0 && !isWallCell && (
-                        <>
-                          <div className="absolute w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-accent-400 shadow-[0_0_15px_rgba(var(--accent-rgb),1)]" style={{ opacity: Math.min(0.2 + visitCount * 0.1, 0.7) }} />
-                          <div className="absolute inset-0 bg-accent-500/10 rounded-xl" style={{ opacity: Math.min(0.05 + visitCount * 0.05, 0.3) }} />
-                        </>
-                    )}
-                    {isTarget && (
-                        <div className={`absolute inset-[30%] rounded-full border-4 ${TARGET_COLOR} animate-[spin_3s_linear_infinite]`} style={{ borderStyle: 'dashed' }} />
-                    )}
-                  </div>
-              );
-            })}
-
-            {/* Player */}
-            <motion.div
-                layout
-                initial={false}
-                animate={{
-                  x: playerPos.x * (cellSize + gridGap),
-                  y: playerPos.y * (cellSize + gridGap),
-                  scale: levelComplete ? 0 : 1
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 400,
-                  damping: 30,
-                  mass: 0.8
-                }}
-                className="absolute top-0 left-0 z-20 flex items-center justify-center"
-                style={{ width: cellSize, height: cellSize }}
-            >
-              <motion.div
-                  animate={{ scale: shake ? [1, 0.8, 1.1, 1] : 1 }}
-                  transition={{ duration: 0.2 }}
-                  className={`w-[65%] h-[65%] rounded-lg ${PLAYER_COLOR} rotate-45 flex items-center justify-center`}
-              >
-                <div className="w-1/2 h-1/2 rounded-full bg-white/50 blur-[2px]" />
-              </motion.div>
-            </motion.div>
-          </div>
-        </motion.div>
-
-        {/* Completion Overlay */}
-        <AnimatePresence>
-          {levelComplete && (
-              <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm px-6"
-              >
-                <motion.div
-                    initial={{ scale: 0.9, y: 20 }}
-                    animate={{ scale: 1, y: 0 }}
-                    className="bg-zinc-900 border border-zinc-800 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-2xl w-full max-w-sm"
-                >
-                  <div className="w-16 h-16 rounded-full bg-accent-500/20 flex items-center justify-center text-accent-400 mb-2 shadow-[0_0_30px_rgba(var(--accent-rgb),0.3)]">
-                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-
-                  <div className="text-center w-full">
-                    <h2 className="text-2xl font-black text-white tracking-widest mb-2 uppercase">{t.levelComplete}</h2>
-                    <p className="text-zinc-400 font-mono text-sm">
-                      {t.nodesConnected} <span className="text-accent-400 font-bold">{history.length}</span> {getMovesInfoWord(history.length, lang)}
-                    </p>
-                    {renderStars(history.length, level.minMoves)}
-                  </div>
-
-                  <div className="w-full mt-2">
-                    {currentLevelIdx < LEVELS.length - 1 ? (
-                        isNextUnlocked ? (
-                            <button
-                                onClick={() => {
-                                  playSound(SOUNDS.nextLevel);
-                                  setCurrentLevelIdx(i => i + 1);
-                                }}
-                                className="w-full py-4 px-6 bg-accent-500 hover:bg-accent-400 text-zinc-950 font-bold rounded-xl tracking-widest transition-transform hover:scale-105 active:scale-95"
-                            >
-                              {t.nextLevel}
-                            </button>
-                        ) : (
-                            <div className="text-center bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                              <p className="text-amber-400 text-sm font-bold flex items-center justify-center gap-2 mb-2 tracking-widest">
-                                <Lock className="w-4 h-4" /> {t.sectorLocked}
-                              </p>
-                              <p className="text-xs text-zinc-500 mb-4 px-2">
-                                {getImproveScoresText(neededChunkMaxMoves, `${neededChunkStart+1}-${neededChunkEnd}`, lang)}
-                              </p>
-                              <button
-                                  onClick={() => { setLevelComplete(false); restart(); }}
-                                  className="w-full py-3 px-6 bg-zinc-800 text-accent-400 hover:text-white hover:bg-zinc-700 font-bold rounded-lg tracking-widest transition-colors"
-                              >
-                                {t.retryLevel}
-                              </button>
-                            </div>
-                        )
-                    ) : (
-                        <div className="py-4 px-6 bg-zinc-800 text-accent-400 font-bold rounded-xl tracking-widest border border-accent-500/30 text-center">
-                          {t.allComplete}
-                        </div>
-                    )}
-
-                    <button
-                        onClick={() => setView('select')}
-                        className="w-full py-3 mt-3 text-sm font-bold text-zinc-500 hover:text-white tracking-widest uppercase transition-colors"
-                    >
-                      {t.chooseLevel}
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-          )}
-        </AnimatePresence>
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="w-11" />
       </div>
+
+      <h2 className="text-3xl md:text-4xl font-bold tracking-[0.2em] mb-8">{t.gameName}</h2>
+      <p className="text-zinc-400 mb-6 leading-relaxed max-w-lg mx-auto">
+        {t.description}
+      </p>
+    </div>
   );
+
+
 
   return (
-      <div className="min-h-screen flex flex-col items-center justify-center w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-accent-500/30 relative">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none mix-blend-overlay opacity-30" />
-        {/* Background glow effects */}
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-accent-900/10 blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-rose-900/5 blur-[120px] pointer-events-none" />
+    <div className="min-h-screen flex flex-col items-center justify-center w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-accent-500/30 relative">
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none mix-blend-overlay opacity-30" />
+      {/* Background glow effects */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-accent-900/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-rose-900/5 blur-[120px] pointer-events-none" />
 
-        {view === 'menu' && renderMenu()}
-        {view === 'select' && renderSelect()}
-        {view === 'about' && renderAbout()}
-        {view === 'playing' && level && renderPlaying()}
-      </div>
+      {view === 'menu' && renderMenu()}
+      {view === 'select' && renderSelect()}
+      {view === 'about' && renderAbout()}
+      {view === 'playing' && level && (
+        <GameSession
+          key={currentLevelIdx}
+          level={level}
+          currentLevelIdx={currentLevelIdx}
+          setCurrentLevelIdx={setCurrentLevelIdx}
+          setView={setView}
+          bestScores={bestScores}
+          setBestScores={setBestScores}
+          lang={lang}
+          theme={theme}
+        />
+      )}
+    </div>
   );
 }
-
