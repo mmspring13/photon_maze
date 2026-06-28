@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent-400: var(--accent-400);
+  --color-accent-500: var(--accent-500);
+  --color-accent-800: var(--accent-800);
+  --color-accent-900: var(--accent-900);
+  --color-accent-950: var(--accent-950);
+}
+
+:root {
+  /* Default: Green #00FA9A */
+  --accent-rgb: 0, 250, 154;
+  --accent-400: rgb(var(--accent-rgb));
+  --accent-500: rgba(var(--accent-rgb), 0.9);
+  --accent-800: rgba(var(--accent-rgb), 0.4);
+  --accent-900: rgba(var(--accent-rgb), 0.25);
+  --accent-950: rgba(var(--accent-rgb), 0.15);
+}
+
+/* Fuchsia #FF00FF */
+:root[data-theme="fuchsia"] {
+  --accent-rgb: 255, 0, 255;
+}
+
+/* Green #00FA9A */
+:root[data-theme="green"] {
+  --accent-rgb: 0, 250, 154;
+}
+
+/* Red #FF0000 */
+:root[data-theme="red"] {
+  --accent-rgb: 255, 0, 0;
+}
+
+/* Blue #007FFF */
+:root[data-theme="blue"] {
+  --accent-rgb: 0, 127, 255;
+}
