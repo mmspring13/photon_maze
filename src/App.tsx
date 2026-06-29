@@ -69,6 +69,12 @@ export default function App() {
     currentType: null
   });
 
+  // useEffect(() => {
+  //   const src = SOUNDS.bgMenu[Math.floor(Math.random() * SOUNDS.bgMenu.length)];
+  //   console.log(src);
+  //   playSound(src);
+  // }, []);
+
   // Main background music logic
   useEffect(() => {
     const requiredType = (view === 'menu' || view === 'select' || view === 'about') ? 'menu' : 'game';
@@ -88,11 +94,12 @@ export default function App() {
           attempts++;
         }
       }
+      console.log(src);
 
       const newAudio = new Audio(src);
       newAudio.loop = false;
       newAudio.volume = 0;
-
+      debugger
       // Automatically play next track on current track completion
       newAudio.addEventListener('ended', () => {
         if (bgManagerRef.current.currentType === type) {
@@ -131,9 +138,11 @@ export default function App() {
         }
       }, stepTime);
     };
-
     if (manager.currentType !== requiredType) {
       playTrack(requiredType);
+      console.log('play track');
+    } else {
+      playTrack('menu');
     }
   }, [view]);
 
