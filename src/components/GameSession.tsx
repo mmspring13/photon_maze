@@ -450,7 +450,7 @@ export default function GameSession({
 
       {/* Mobile controls */}
       <div className="mt-2.5 flex flex-col items-center gap-1.5 md:hidden">
-        <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold font-mono opacity-85 select-none pointer-events-none">
+        <span className="text-center text-[10px] text-zinc-500 uppercase tracking-widest font-bold font-mono opacity-85 select-none pointer-events-none">
           {t.swipeHint}
         </span>
         <div className="grid grid-cols-3 gap-1.5 w-36 justify-center items-center select-none">
