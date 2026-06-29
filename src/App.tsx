@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import  { useState, useEffect, useCallback, useRef } from 'react';
 import { RotateCcw, Star, Lock, Play, List, Info, ArrowLeft, Globe, Palette } from 'lucide-react';
 import { LEVELS } from './levels';
 import type { Level } from './levels';
@@ -60,7 +60,7 @@ export default function App() {
 
   const bgManagerRef = useRef<{
     activeAudio: HTMLAudioElement | null;
-    // @ts-expect-error NodeJS error
+    // @ts-expect-error for support nodejs types
     interval: NodeJS.Timeout | null;
     currentType: 'menu' | 'game' | null;
   }>({
@@ -68,12 +68,6 @@ export default function App() {
     interval: null,
     currentType: null
   });
-
-  // useEffect(() => {
-  //   const src = SOUNDS.bgMenu[Math.floor(Math.random() * SOUNDS.bgMenu.length)];
-  //   console.log(src);
-  //   playSound(src);
-  // }, []);
 
   // Main background music logic
   useEffect(() => {
@@ -98,6 +92,7 @@ export default function App() {
       const newAudio = new Audio(src);
       newAudio.loop = false;
       newAudio.volume = 0;
+
       // Automatically play next track on current track completion
       newAudio.addEventListener('ended', () => {
         if (bgManagerRef.current.currentType === type) {
@@ -136,10 +131,9 @@ export default function App() {
         }
       }, stepTime);
     };
+
     if (manager.currentType !== requiredType) {
       playTrack(requiredType);
-    } else {
-      playTrack('menu');
     }
   }, [view]);
 
@@ -415,10 +409,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-accent-500/30 relative">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none mix-blend-overlay opacity-30" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none mix-blend-overlay opacity-30 transform-gpu" />
       {/* Background glow effects */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-accent-900/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-rose-900/5 blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-accent-900/10 blur-[120px] pointer-events-none transform-gpu" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-rose-900/5 blur-[120px] pointer-events-none transform-gpu" />
 
       {view === 'menu' && renderMenu()}
       {view === 'select' && renderSelect()}

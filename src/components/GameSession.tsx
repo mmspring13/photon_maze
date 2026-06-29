@@ -46,6 +46,9 @@ export default function GameSession({
   const containerRef = useRef<HTMLDivElement>(null);
   const [touchStart, setTouchStart] = useState<{x: number; y: number} | null>(null);
 
+  // @ts-expect-error for support nodejs types
+  const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Level unlocking logic
   const UNLOCK_CHUNK_SIZE = 4;
   const SCORE_LEEWAY_PER_LEVEL = 10;
@@ -71,13 +74,21 @@ export default function GameSession({
 
   const triggerShake = () => {
     setShake(true);
-    setTimeout(() => setShake(false), 200);
+    const timeout = setTimeout(() => setShake(false), 200);
+    return () => clearTimeout(timeout);
   };
+
+  // Memoize walls for O(1) checks
+  const wallsSet = useMemo(() => {
+    const set = new Set<string>();
+    level.walls.forEach(w => set.add(`${w.x},${w.y}`));
+    return set;
+  }, [level.walls]);
 
   const isWall = useCallback((x: number, y: number) => {
     if (x < 0 || x >= level.gridSize.width || y < 0 || y >= level.gridSize.height) return true;
-    return level.walls.some(w => w.x === x && w.y === y);
-  }, [level]);
+    return wallsSet.has(`${x},${y}`);
+  }, [level.gridSize, wallsSet]);
 
   const move = useCallback((dx: number, dy: number) => {
     if (isMovingRef.current || levelComplete) return;
@@ -125,7 +136,8 @@ export default function GameSession({
       const distance = Math.max(Math.abs(curX - playerPos.x), Math.abs(curY - playerPos.y));
       const duration = Math.min(150 + distance * 30, 400);
 
-      setTimeout(() => {
+      if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
+      moveTimeoutRef.current = setTimeout(() => {
         isMovingRef.current = false;
         setIsMoving(false);
         if (bumped) triggerShake();
@@ -169,11 +181,17 @@ export default function GameSession({
 
   const restart = () => {
     if (isMovingRef.current) return;
+    if (moveTimeoutRef.current) {
+      clearTimeout(moveTimeoutRef.current);
+      moveTimeoutRef.current = null;
+    }
     playSound(SOUNDS.restartGame);
     setPlayerPos(level.start);
     setHistory([]);
     setVisits({ [`${level.start.x},${level.start.y}`]: 1 });
     setLevelComplete(false);
+    isMovingRef.current = false;
+    setIsMoving(false);
   };
 
   useEffect(() => {
@@ -211,6 +229,12 @@ export default function GameSession({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [move, undo, restart, setView]);
 
+  useEffect(() => {
+    return () => {
+      if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
+    };
+  }, []);
+
   // Touch handling
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
@@ -229,21 +253,46 @@ export default function GameSession({
     setTouchStart(null);
   };
 
-  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : true;
+  // Track window dimensions React-style with simple debounce to avoid Layout Thrashing
+  const [windowSize, setWindowSize] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 375,
+    height: typeof window !== 'undefined' ? window.innerHeight : 667,
+  }));
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timeoutId: number;
+    const handleResize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        setWindowSize({
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
+      }, 100);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const isMobile = windowSize.width < 768;
   const gridGap = isMobile ? 6 : 8;
 
-  let cellSize = 40;
-  if (level) {
+  const cellSize = useMemo(() => {
+    if (!level) return 40;
     const padding = isMobile ? 24 : 32;
-    const availableWidth = (typeof window !== 'undefined' ? window.innerWidth : 300) - 32 - padding;
-    const availableHeight = typeof window !== 'undefined' ? window.innerHeight - 300 : 300;
+    const availableWidth = windowSize.width - 32 - padding;
+    const availableHeight = windowSize.height - 300;
 
-    cellSize = Math.min(
+    return Math.min(
       60,
       Math.floor((availableWidth - gridGap * (level.gridSize.width - 1)) / level.gridSize.width),
       Math.floor((availableHeight - gridGap * (level.gridSize.height - 1)) / level.gridSize.height)
     );
-  }
+  }, [level, windowSize.width, windowSize.height, isMobile, gridGap]);
 
   const renderStars = (moves: number, minMoves: number) => {
     const stars = moves <= minMoves ? 3 : moves <= minMoves + 2 ? 2 : 1;
@@ -319,17 +368,18 @@ export default function GameSession({
       <motion.div
         animate={{
           x: shake ? [-3, 3, -2, 2, 0] : 0,
-          y: shake ? [-1, 1, -1, 1, 0] : 0,
-          boxShadow: isMoving
-            ? '0 20px 60px -15px rgba(var(--accent-rgb), 0.2)'
-            : '0 20px 40px -15px rgba(0, 0, 0, 0.5)'
+          y: shake ? [-1, 1, -1, 1, 0] : 0
         }}
         transition={{ duration: 0.2 }}
         ref={containerRef}
-        className="relative bg-zinc-950 p-3 md:p-4 rounded-3xl ring-1 ring-zinc-800 touch-none select-none max-w-full overflow-hidden shadow-2xl"
+        className={`relative bg-zinc-950 p-3 md:p-4 rounded-3xl ring-1 ring-zinc-800 touch-none select-none max-w-full overflow-hidden shadow-2xl transform-gpu transition-shadow duration-300 ${
+          isMoving
+            ? 'shadow-[0_20px_60px_-15px_rgba(var(--accent-rgb),0.35)]'
+            : 'shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)]'
+        }`}
       >
         <div
-          className="relative grid gap-1.5 md:gap-2"
+          className="relative grid gap-1.5 md:gap-2 transform-gpu"
           style={{
             gridTemplateColumns: `repeat(${level.gridSize.width}, ${cellSize}px)`,
             gridTemplateRows: `repeat(${level.gridSize.height}, ${cellSize}px)`,
@@ -339,7 +389,7 @@ export default function GameSession({
             const x = i % level.gridSize.width;
             const y = Math.floor(i / level.gridSize.width);
 
-            const isWallCell = level.walls.some(w => w.x === x && w.y === y);
+            const isWallCell = wallsSet.has(`${x},${y}`);
             const isTarget = level.target.x === x && level.target.y === y;
             const visitCount = visits[`${x},${y}`] || 0;
 
@@ -351,19 +401,19 @@ export default function GameSession({
             return (
               <div
                 key={i}
-                className={`flex items-center justify-center relative rounded-xl border-2 transition-colors duration-500 ${
+                className={`flex items-center justify-center relative rounded-xl border-2 transition-colors duration-300 transform-gpu ${
                   isWallCell ? WALL_COLOR :
                     emptyClass
                 }`}
               >
                 {visitCount > 0 && !isWallCell && (
                   <>
-                    <div className="absolute w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-accent-400 shadow-[0_0_15px_rgba(var(--accent-rgb),1)]" style={{ opacity: Math.min(0.2 + visitCount * 0.1, 0.7) }} />
-                    <div className="absolute inset-0 bg-accent-500/10 rounded-xl" style={{ opacity: Math.min(0.05 + visitCount * 0.05, 0.3) }} />
+                    <div className="absolute w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-accent-400 shadow-[0_0_15px_rgba(var(--accent-rgb),1)] transform-gpu" style={{ opacity: Math.min(0.2 + visitCount * 0.1, 0.7) }} />
+                    <div className="absolute inset-0 bg-accent-500/10 rounded-xl transform-gpu" style={{ opacity: Math.min(0.05 + visitCount * 0.05, 0.3) }} />
                   </>
                 )}
                 {isTarget && (
-                  <div className={`absolute inset-[30%] rounded-full border-4 ${TARGET_COLOR} animate-[spin_3s_linear_infinite]`} style={{ borderStyle: 'dashed' }} />
+                  <div className={`absolute inset-[30%] rounded-full border-4 ${TARGET_COLOR} animate-[spin_3s_linear_infinite] transform-gpu`} style={{ borderStyle: 'dashed' }} />
                 )}
               </div>
             );
@@ -371,7 +421,6 @@ export default function GameSession({
 
           {/* Player */}
           <motion.div
-            layout
             initial={false}
             animate={{
               x: playerPos.x * (cellSize + gridGap),
@@ -384,13 +433,13 @@ export default function GameSession({
               damping: 30,
               mass: 0.8
             }}
-            className="absolute top-0 left-0 z-20 flex items-center justify-center"
+            className="absolute top-0 left-0 z-20 flex items-center justify-center transform-gpu"
             style={{ width: cellSize, height: cellSize }}
           >
             <motion.div
               animate={{ scale: shake ? [1, 0.8, 1.1, 1] : 1 }}
               transition={{ duration: 0.2 }}
-              className={`w-[65%] h-[65%] rounded-lg ${PLAYER_COLOR} rotate-45 flex items-center justify-center`}
+              className={`w-[65%] h-[65%] rounded-lg ${PLAYER_COLOR} rotate-45 flex items-center justify-center transform-gpu`}
             >
               <div className="w-1/2 h-1/2 rounded-full bg-white/50 blur-[2px]" />
             </motion.div>
