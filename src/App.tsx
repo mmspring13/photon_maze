@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import  { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RotateCcw, Star, Lock, Play, List, Info, ArrowLeft, Globe, Palette } from 'lucide-react';
 import { LEVELS } from './levels';
 import type { Level } from './levels';
@@ -60,7 +55,7 @@ export default function App() {
 
   const bgManagerRef = useRef<{
     activeAudio: HTMLAudioElement | null;
-    // @ts-expect-error for support nodejs types
+    // @ts-expect-error for nodejs support
     interval: NodeJS.Timeout | null;
     currentType: 'menu' | 'game' | null;
   }>({
@@ -195,7 +190,7 @@ export default function App() {
 
 
   const renderMenu = () => (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 z-10 relative">
+    <div className="flex flex-col items-center justify-center min-h-screen min-h-dvh p-6 z-10 relative">
       <div className="mb-16 relative">
         <div className="absolute inset-0 bg-accent-500/20 blur-[100px] rounded-full" />
         <h1 className="text-4xl md:text-6xl lg:text-8xl font-black tracking-[0.3em] text-white drop-shadow-[0_0_25px_rgba(255,255,255,0.4)] relative z-10 text-center">{t.gameName}</h1>
@@ -387,7 +382,7 @@ export default function App() {
   };
 
   const renderAbout = () => (
-    <div className="flex flex-col items-center min-h-screen p-6 w-full max-w-2xl mx-auto z-10 text-center relative justify-center">
+    <div className="flex flex-col items-center min-h-screen min-h-dvh p-6 w-full max-w-2xl mx-auto z-10 text-center relative justify-center">
       <div className="w-full flex justify-between items-center mb-8 mt-4">
         <button
           onClick={() => setView('menu')}
@@ -408,7 +403,7 @@ export default function App() {
 
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-accent-500/30 relative">
+    <div className="min-h-screen min-h-dvh flex flex-col items-center justify-center w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden selection:bg-accent-500/30 relative">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none mix-blend-overlay opacity-30 transform-gpu" />
       {/* Background glow effects */}
       <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-accent-900/10 blur-[120px] pointer-events-none transform-gpu" />

@@ -46,7 +46,7 @@ export default function GameSession({
   const containerRef = useRef<HTMLDivElement>(null);
   const [touchStart, setTouchStart] = useState<{x: number; y: number} | null>(null);
 
-  // @ts-expect-error for support nodejs types
+  // @ts-expect-error for nodejs support
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Level unlocking logic
@@ -285,7 +285,7 @@ export default function GameSession({
     if (!level) return 40;
     const padding = isMobile ? 24 : 32;
     const availableWidth = windowSize.width - 32 - padding;
-    const availableHeight = windowSize.height - 300;
+    const availableHeight = windowSize.height - (isMobile ? 380 : 300);
 
     return Math.min(
       60,
@@ -346,7 +346,7 @@ export default function GameSession({
         </div>
       </div>
 
-      <div className="mb-6 mt-12 flex flex-col items-center gap-2 text-center">
+      <div className="mb-4 mt-10 md:mt-12 md:mb-6 flex flex-col items-center gap-2 text-center">
         <div className="font-mono text-sm tracking-widest text-zinc-400 uppercase">
           {t.sector} <span className="text-white font-bold ml-1">{currentLevelIdx + 1}</span>
         </div>
@@ -448,7 +448,7 @@ export default function GameSession({
       </motion.div>
 
       {/* Mobile controls */}
-      <div className="mt-6 flex flex-col items-center gap-3 md:hidden">
+      <div className="mt-4 flex flex-col items-center gap-2 md:hidden">
         <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold font-mono opacity-85 select-none pointer-events-none">
           {t.swipeHint}
         </span>
