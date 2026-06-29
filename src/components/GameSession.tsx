@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RotateCcw, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RefreshCw, Star, Lock, ArrowLeft } from 'lucide-react';
 import { LEVELS } from '../levels';
@@ -46,7 +46,7 @@ export default function GameSession({
   const containerRef = useRef<HTMLDivElement>(null);
   const [touchStart, setTouchStart] = useState<{x: number; y: number} | null>(null);
 
-  // @ts-expect-error for nodejs support
+  // @ts-expect-error for support nodejs
   const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Level unlocking logic
@@ -285,10 +285,11 @@ export default function GameSession({
     if (!level) return 40;
     const padding = isMobile ? 24 : 32;
     const availableWidth = windowSize.width - 32 - padding;
-    const availableHeight = windowSize.height - (isMobile ? 380 : 300);
+    const availableHeight = windowSize.height - (isMobile ? 440 : 300);
+    const maxCellSize = isMobile ? 46 : 60;
 
     return Math.min(
-      60,
+      maxCellSize,
       Math.floor((availableWidth - gridGap * (level.gridSize.width - 1)) / level.gridSize.width),
       Math.floor((availableHeight - gridGap * (level.gridSize.height - 1)) / level.gridSize.height)
     );
@@ -319,7 +320,7 @@ export default function GameSession({
 
   return (
     <div
-      className="w-full flex flex-col items-center justify-center flex-1 h-full relative z-10 touch-none select-none"
+      className="w-full flex flex-col items-center justify-center flex-1 h-full relative z-10 touch-none select-none pb-12 md:pb-0"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -346,20 +347,20 @@ export default function GameSession({
         </div>
       </div>
 
-      <div className="mb-4 mt-10 md:mt-12 md:mb-6 flex flex-col items-center gap-2 text-center">
-        <div className="font-mono text-sm tracking-widest text-zinc-400 uppercase">
+      <div className="mb-3 mt-14 md:mt-12 md:mb-6 flex flex-col items-center gap-1.5 md:gap-2 text-center">
+        <div className="font-mono text-xs md:text-sm tracking-widest text-zinc-400 uppercase">
           {t.sector} <span className="text-white font-bold ml-1">{currentLevelIdx + 1}</span>
         </div>
 
-        <div className="flex gap-6 items-center bg-zinc-950 border border-zinc-800/80 px-8 py-3 rounded-2xl shadow-inner">
+        <div className="flex gap-4 md:gap-6 items-center bg-zinc-950 border border-zinc-800/80 px-5 py-1.5 md:px-8 md:py-3 rounded-2xl shadow-inner">
           <div className="flex flex-col items-center">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.movesCap}</span>
-            <span className="font-mono text-2xl text-accent-400 font-black">{history.length}</span>
+            <span className="text-[9px] md:text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.movesCap}</span>
+            <span className="font-mono text-xl md:text-2xl text-accent-400 font-black">{history.length}</span>
           </div>
-          <div className="w-px h-10 bg-zinc-800" />
+          <div className="w-px h-8 md:h-10 bg-zinc-800" />
           <div className="flex flex-col items-center">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.targetMode}</span>
-            <span className="font-mono text-2xl text-zinc-300 font-bold">{level.minMoves}</span>
+            <span className="text-[9px] md:text-[10px] text-zinc-500 uppercase tracking-widest font-bold">{t.targetMode}</span>
+            <span className="font-mono text-xl md:text-2xl text-zinc-300 font-bold">{level.minMoves}</span>
           </div>
         </div>
       </div>
@@ -448,7 +449,7 @@ export default function GameSession({
       </motion.div>
 
       {/* Mobile controls */}
-      <div className="mt-4 flex flex-col items-center gap-2 md:hidden">
+      <div className="mt-2.5 flex flex-col items-center gap-1.5 md:hidden">
         <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold font-mono opacity-85 select-none pointer-events-none">
           {t.swipeHint}
         </span>
